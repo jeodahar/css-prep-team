@@ -2,13 +2,23 @@ import re
 import shutil
 from datetime import datetime
 
+import os
+import traceback
+
 import streamlit as st
 
-from config import CSS_SUBJECTS, UPLOAD_DIR, get_llm
-from crews.assess_crew import run_assessment
-from crews.prepare_crew import run_preparation
-
 st.set_page_config(page_title="CSS Prep Team", page_icon="🎓", layout="wide")
+
+try:
+    from config import CSS_SUBJECTS, UPLOAD_DIR, get_llm
+    from crew_assess import run_assessment
+    from crew_prepare import run_preparation
+except Exception:
+    st.error("Startup failed. Copy the text below and send it to Claude.")
+    st.code(traceback.format_exc())
+    st.write("Files found in the repo root:", sorted(os.listdir(".")))
+    st.stop()
+
 st.title("🎓 CSS Multi-Agent Preparation Team")
 st.caption("Topics, past paper trends, notes, practice questions and answer assessment.")
 
