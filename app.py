@@ -10,7 +10,10 @@ st.set_page_config(page_title="CSS Prep Team", page_icon="🎓", layout="wide")
 
 try:
     import storage
-    from config import CSS_SUBJECTS, UPLOAD_DIR, get_llm
+    from config import CSS_SUBJECTS, OFFICIAL_PDF, UPLOAD_DIR, get_llm
+    from pdf_export import package_pdf, reports_pdf
+    from syllabus_loader import ensure_official_syllabus
+    from tool_syllabus import preview_section, set_syllabus_hint
     from crew_assess import run_assessment
     from crew_prepare import run_preparation
 except Exception:
@@ -46,12 +49,32 @@ with st.sidebar:
     else:
         st.caption("⚠️ Cloud saving is OFF (work is kept only while this tab is open).")
 
+    st.header("Official syllabus")
+    if OFFICIAL_PDF.exists():
+        ss["syllabus_ok"] = True
+    elif not ss.get("syllabus_tried"):
+        with st.spinner("Downloading the official CSS syllabus..."):
+            ss["syllabus_ok"], ss["syllabus_msg"] = ensure_official_syllabus()
+        ss["syllabus_tried"] = True
+    if ss.get("syllabus_ok"):
+        st.caption("📘 Official CSS syllabus is loaded.")
+    else:
+        st.caption("⚠️ " + ss.get("syllabus_msg", "Syllabus not loaded."))
+        if st.button("Retry syllabus download"):
+            ss["syllabus_tried"] = False
+            st.rerun()
+
     st.header("Setup")
     subject = st.selectbox("Subject", CSS_SUBJECTS)
     if subject == "Other":
         subject = st.text_input("Type the subject name") or "General"
     marks = st.number_input("Marks per question", min_value=5, max_value=100, value=20, step=5)
     n_questions = st.slider("Practice questions", 3, 8, 5)
+    syllabus_hint = st.text_input(
+        "Syllabus heading (only if the preview looks wrong)",
+        help="Type words from the subject's heading in the syllabus, e.g. 'Islamic Studies'.",
+    )
+    set_syllabus_hint(syllabus_hint)
 
     st.subheader("Optional uploads")
     st.caption("Text-based PDFs work best (scanned images cannot be read).")
@@ -94,6 +117,9 @@ tab_prepare, tab_assess, tab_reports = st.tabs(
 # ---------------- Tab 1: Prepare ----------------
 with tab_prepare:
     focus = st.text_input("Focus topic (optional)", placeholder="e.g. Constitutional development")
+    if ss.get("syllabus_ok"):
+        with st.expander("Check: official syllabus text the agents will read for this subject"):
+            st.text(preview_section(subject))
     if st.button("Build my preparation package", type="primary"):
         try:
             llm = get_llm()
@@ -130,12 +156,15 @@ with tab_prepare:
         t2.markdown(pkg["past_papers"])
         t3.markdown(pkg["notes"])
         t4.markdown(pkg["questions"])
-        full = (
-            f"# CSS {ss.get('package_subject', subject)} - Preparation Package\n\n"
-            f"## Topics\n{pkg['topics']}\n\n## Past paper analysis\n{pkg['past_papers']}\n\n"
-            f"## Notes\n{pkg['notes']}\n\n## Questions\n{pkg['questions']}"
-        )
-        st.download_button("Download package (.md)", full, file_name="css_preparation_package.md")
+        try:
+            st.download_button(
+                "Download package (PDF)",
+                package_pdf(ss.get("package_subject", subject), pkg),
+                file_name="css_preparation_package.pdf",
+                mime="application/pdf",
+            )
+        except Exception as e:
+            st.warning(f"Could not create the PDF: {e}")
 
 # ---------------- Tab 2: Practice & Assess ----------------
 with tab_assess:
@@ -165,6 +194,16 @@ with tab_assess:
                 }
                 ss["history"].append(item)
                 st.markdown(report)
+                try:
+                    st.download_button(
+                        "Download this report (PDF)",
+                        reports_pdf([item]),
+                        file_name="css_report.pdf",
+                        mime="application/pdf",
+                        key="dl_latest",
+                    )
+                except Exception as e:
+                    st.warning(f"Could not create the PDF: {e}")
                 if user_id and storage.is_enabled():
                     err = storage.save_report(user_id, subject, item)
                     if err:
@@ -180,16 +219,31 @@ with tab_reports:
     if not ss["history"]:
         st.info("No assessments yet.")
     else:
-        for item in reversed(ss["history"]):
+        for n, item in enumerate(reversed(ss["history"])):
             with st.expander(f"{item['time']} - {item['subject']}: {item['question'][:70]}"):
                 st.markdown(item["report"])
                 if item.get("answer"):
                     st.caption("Your answer")
                     st.write(item["answer"])
-        all_text = "\n\n---\n\n".join(
-            f"## {h['time']} - {h['subject']}\n**Question:** {h['question']}\n\n{h['report']}"
-            for h in ss["history"]
-        )
-        st.download_button("Download all reports (.md)", all_text, file_name="css_reports.md")
+                try:
+                    st.download_button(
+                        "Download this report (PDF)",
+                        reports_pdf([item]),
+                        file_name="css_report.pdf",
+                        mime="application/pdf",
+                        key=f"dl_report_{n}",
+                    )
+                except Exception as e:
+                    st.warning(f"Could not create the PDF: {e}")
+        try:
+            st.download_button(
+                "Download all reports (PDF)",
+                reports_pdf(ss["history"]),
+                file_name="css_reports.pdf",
+                mime="application/pdf",
+                key="dl_all",
+            )
+        except Exception as e:
+            st.warning(f"Could not create the PDF: {e}")
         if not (user_id and storage.is_enabled()):
             st.caption("Not saved to the cloud. Enter a profile name (and set up saving) to keep reports.")

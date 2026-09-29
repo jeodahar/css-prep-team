@@ -10,6 +10,12 @@ MODEL_NAME = "groq/openai/gpt-oss-120b"  # "groq/" prefix tells CrewAI/LiteLLM t
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# Official CSS syllabus (public Google Drive PDF), downloaded once by syllabus_loader.py
+OFFICIAL_SYLLABUS_ID = "1KsgZf4zfnAYNGyXp5Hf1ouJJzNZZEo-_"
+OFFICIAL_DIR = Path("official")
+OFFICIAL_DIR.mkdir(exist_ok=True)
+OFFICIAL_PDF = OFFICIAL_DIR / "css_syllabus.pdf"
+
 # Groq free tier allows only ~8,000 tokens per minute, so everything is kept small.
 MAX_TOOL_CHARS = 1500   # web results returned to an agent
 DOC_CHUNK_CHARS = 2500  # one part of an uploaded file

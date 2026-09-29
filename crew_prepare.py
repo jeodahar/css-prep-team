@@ -28,9 +28,9 @@ def run_preparation(llm, subject, focus, num_questions, marks, partial, progress
             (
                 f"Subject: CSS {subject}. Focus: {focus_text}.\n"
                 "Use at most 2 tool calls in total.\n"
-                "1) Call 'List Uploaded Files' with kind='syllabus'. If a file exists, read part 1 "
-                "with 'Read Uploaded File'.\n"
-                f"2) If no file exists, call 'Web Search' once for 'CSS {subject} syllabus FPSC'.\n"
+                f"1) Call 'Read Official Syllabus' with subject='{subject}' (use part=2 only if part 1 is cut off).\n"
+                "2) If it says the section was not found, call 'List Uploaded Files' with kind='syllabus' "
+                f"and read part 1, or call 'Web Search' once for 'CSS {subject} syllabus FPSC'.\n"
                 "Then list the syllabus topics and rank each High, Medium or Low priority."
             ),
             "Numbered list of at most 12 topics, one short line each with priority. Under 300 words.",
