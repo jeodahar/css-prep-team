@@ -48,6 +48,11 @@ with st.sidebar:
         st.caption("💾 Cloud saving is ON" if user_id else "Enter a profile name to save your work.")
     else:
         st.caption("⚠️ Cloud saving is OFF (work is kept only while this tab is open).")
+        if storage.setup_error():
+            st.caption(storage.setup_error())
+    if storage.is_enabled() and st.button("Test cloud saving"):
+        ok, msg = storage.check_connection()
+        (st.success if ok else st.error)(msg)
 
     st.header("Official syllabus")
     if OFFICIAL_PDF.exists():
