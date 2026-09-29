@@ -1,15 +1,15 @@
+import os
 import re
 import shutil
-from datetime import datetime
-
-import os
 import traceback
+from datetime import datetime
 
 import streamlit as st
 
 st.set_page_config(page_title="CSS Prep Team", page_icon="🎓", layout="wide")
 
 try:
+    import storage
     from config import CSS_SUBJECTS, UPLOAD_DIR, get_llm
     from crew_assess import run_assessment
     from crew_prepare import run_preparation
@@ -35,6 +35,17 @@ def save_uploads(files, kind):
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
+    st.header("Your profile")
+    raw_id = st.text_input(
+        "Profile name / secret code",
+        help="Your saved work is stored under this name. Use something hard to guess.",
+    )
+    user_id = re.sub(r"[^a-z0-9_-]", "", raw_id.strip().lower().replace(" ", "-"))
+    if storage.is_enabled():
+        st.caption("💾 Cloud saving is ON" if user_id else "Enter a profile name to save your work.")
+    else:
+        st.caption("⚠️ Cloud saving is OFF (work is kept only while this tab is open).")
+
     st.header("Setup")
     subject = st.selectbox("Subject", CSS_SUBJECTS)
     if subject == "Other":
@@ -54,6 +65,28 @@ with st.sidebar:
         UPLOAD_DIR.mkdir(exist_ok=True)
         st.success("Uploads cleared.")
 
+# ---------------- Load saved data ----------------
+if user_id and storage.is_enabled():
+    if ss.get("loaded_user") != user_id:
+        rows, err = storage.load_items(user_id, "report")
+        if err:
+            st.warning(err)
+        else:
+            ss["history"] = [r["content"] for r in rows]
+        ss["loaded_user"] = user_id
+        ss["pkg_key"] = None
+    pkg_key = f"{user_id}|{subject}"
+    if ss.get("pkg_key") != pkg_key:
+        rows, err = storage.load_items(user_id, "package", subject)
+        if err:
+            st.warning(err)
+        elif rows:
+            ss["package"] = rows[-1]["content"]
+            ss["package_subject"] = subject
+        elif ss.get("package_subject") != subject:
+            ss["package"] = None
+        ss["pkg_key"] = pkg_key
+
 tab_prepare, tab_assess, tab_reports = st.tabs(
     ["1️⃣ Prepare", "2️⃣ Practice & Assess", "3️⃣ My Reports"]
 )
@@ -67,6 +100,12 @@ with tab_prepare:
             with st.spinner("4 agents are working... this can take a few minutes."):
                 ss["package"] = run_preparation(llm, subject, focus, n_questions, int(marks))
             ss["package_subject"] = subject
+            if user_id and storage.is_enabled():
+                err = storage.save_package(user_id, subject, ss["package"])
+                if err:
+                    st.warning(err)
+                else:
+                    st.success("Package saved to your profile.")
         except Exception as e:
             st.error(f"Something went wrong: {e}")
             st.info("If you see a rate-limit (429) error, wait one minute and try again.")
@@ -104,15 +143,21 @@ with tab_assess:
                 llm = get_llm()
                 with st.spinner("The assessor is marking your answer..."):
                     report = run_assessment(llm, subject, question, answer, int(marks))
-                ss["history"].append(
-                    {
-                        "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "subject": subject,
-                        "question": question,
-                        "report": report,
-                    }
-                )
+                item = {
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "subject": subject,
+                    "question": question,
+                    "answer": answer,
+                    "report": report,
+                }
+                ss["history"].append(item)
                 st.markdown(report)
+                if user_id and storage.is_enabled():
+                    err = storage.save_report(user_id, subject, item)
+                    if err:
+                        st.warning(err)
+                    else:
+                        st.success("Report saved to your profile.")
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
                 st.info("If you see a rate-limit (429) error, wait one minute and try again.")
@@ -120,14 +165,18 @@ with tab_assess:
 # ---------------- Tab 3: Reports ----------------
 with tab_reports:
     if not ss["history"]:
-        st.info("No assessments yet in this session.")
+        st.info("No assessments yet.")
     else:
         for item in reversed(ss["history"]):
             with st.expander(f"{item['time']} - {item['subject']}: {item['question'][:70]}"):
                 st.markdown(item["report"])
+                if item.get("answer"):
+                    st.caption("Your answer")
+                    st.write(item["answer"])
         all_text = "\n\n---\n\n".join(
             f"## {h['time']} - {h['subject']}\n**Question:** {h['question']}\n\n{h['report']}"
             for h in ss["history"]
         )
         st.download_button("Download all reports (.md)", all_text, file_name="css_reports.md")
-        st.caption("Reports are kept only while this browser session is open. Download to keep them.")
+        if not (user_id and storage.is_enabled()):
+            st.caption("Not saved to the cloud. Enter a profile name (and set up saving) to keep reports.")
