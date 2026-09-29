@@ -1,0 +1,7 @@
+streamlit
+crewai>=1.15
+litellm>=1.83.14
+pypdf
+ddgs
+requests
+beautifulsoup4
