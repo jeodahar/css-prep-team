@@ -2,9 +2,24 @@
 
 If Supabase secrets are missing, is_enabled() is False and the app works session-only.
 """
+from urllib.parse import urlparse
+
 import streamlit as st
 
 TABLE = "css_data"
+
+
+def _clean_url(url) -> str:
+    """Keep only https://<project>.supabase.co (removes /rest/v1, trailing / and stray quotes)."""
+    url = str(url).strip().strip("\"'").strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else url
+
+
+def _clean_key(key) -> str:
+    return str(key).strip().strip("\"'").strip()
 
 
 @st.cache_resource
@@ -17,7 +32,9 @@ def _create(url: str, key: str):
 
 def _connect():
     try:
-        return _create(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]), None
+        url = _clean_url(st.secrets["SUPABASE_URL"])
+        key = _clean_key(st.secrets["SUPABASE_KEY"])
+        return _create(url, key), None
     except Exception as e:
         return None, f"{type(e).__name__}: {e}"
 
