@@ -1,94 +1,98 @@
-"""Crew 1: builds the preparation package (topics, past paper trends, notes, questions)."""
-from crewai import Crew, Process, Task
+"""Crew 1: builds the preparation package one small step at a time (fits Groq free limits)."""
+import time
 
 from agent_notes import build_notes_agent
 from agent_past_paper import build_past_paper_agent
 from agent_question import build_question_agent
 from agent_syllabus import build_syllabus_agent
+from config import truncate
+from crew_common import run_stage
+
+COOLDOWN_SECONDS = 20
 
 
-def _raw(task: Task) -> str:
-    out = getattr(task, "output", None)
-    return getattr(out, "raw", None) or str(out or "")
+def _cooldown(progress):
+    progress(f"Short pause ({COOLDOWN_SECONDS}s) to respect Groq's per-minute limit...")
+    time.sleep(COOLDOWN_SECONDS)
 
 
-def run_preparation(llm, subject: str, focus: str, num_questions: int, marks: int) -> dict:
-    syllabus_agent = build_syllabus_agent(llm)
-    paper_agent = build_past_paper_agent(llm)
-    notes_agent = build_notes_agent(llm)
-    question_agent = build_question_agent(llm)
-
+def run_preparation(llm, subject, focus, num_questions, marks, partial, progress=None) -> dict:
+    """`partial` keeps finished steps, so a retry continues where it stopped."""
+    progress = progress or (lambda msg: None)
     focus_text = focus.strip() or "the whole subject"
 
-    t_syllabus = Task(
-        description=(
-            f"Subject: CSS {subject}. Focus: {focus_text}.\n"
-            "1) Call 'List Uploaded Files' with kind='syllabus'.\n"
-            "2) If a syllabus file exists, read it with 'Read Uploaded File' (at most 3 parts).\n"
-            f"3) If none exists, use 'Web Search' for 'CSS {subject} syllabus FPSC' and read the best page.\n"
-            "Break the syllabus into topics and rank each as High, Medium or Low priority."
-        ),
-        expected_output=(
-            "A numbered list of 10-15 topics. Each line: topic name, one-line scope, priority."
-        ),
-        agent=syllabus_agent,
-    )
+    if "topics" not in partial:
+        progress("Step 1/4: Syllabus Analyst is working...")
+        partial["topics"] = run_stage(
+            build_syllabus_agent(llm),
+            (
+                f"Subject: CSS {subject}. Focus: {focus_text}.\n"
+                "Use at most 2 tool calls in total.\n"
+                "1) Call 'List Uploaded Files' with kind='syllabus'. If a file exists, read part 1 "
+                "with 'Read Uploaded File'.\n"
+                f"2) If no file exists, call 'Web Search' once for 'CSS {subject} syllabus FPSC'.\n"
+                "Then list the syllabus topics and rank each High, Medium or Low priority."
+            ),
+            "Numbered list of at most 12 topics, one short line each with priority. Under 300 words.",
+            progress,
+            "Syllabus Analyst",
+        )
+        _cooldown(progress)
 
-    t_papers = Task(
-        description=(
-            f"Subject: CSS {subject}. Focus: {focus_text}.\n"
-            "1) Call 'List Uploaded Files' with kind='paper'.\n"
-            "2) If past papers exist, read them ('Read Uploaded File', at most 3 parts) and use "
-            "'Search Uploaded Files' for the top topics to see how often they appear.\n"
-            f"3) If none exist, use 'Web Search' for 'CSS {subject} past papers questions'.\n"
-            "Find repeated questions, topic frequency, and the command words examiners use."
-        ),
-        expected_output=(
-            "Short report: repeated questions/themes, topic frequency, question patterns, "
-            "and 5 predicted hot topics."
-        ),
-        agent=paper_agent,
-        context=[t_syllabus],
-    )
+    if "past_papers" not in partial:
+        progress("Step 2/4: Past Paper Analyst is working...")
+        partial["past_papers"] = run_stage(
+            build_past_paper_agent(llm),
+            (
+                f"Subject: CSS {subject}. Focus: {focus_text}.\n"
+                "Use at most 2 tool calls in total.\n"
+                "1) Call 'List Uploaded Files' with kind='paper'. If files exist, read part 1 of the "
+                "first one with 'Read Uploaded File', or use 'Search Uploaded Files' for one top topic.\n"
+                f"2) If none exist, call 'Web Search' once for 'CSS {subject} past papers questions'.\n"
+                f"Topics so far:\n{truncate(partial['topics'], 1500)}"
+            ),
+            "Under 250 words: repeated themes, question styles and command words, 5 predicted hot topics.",
+            progress,
+            "Past Paper Analyst",
+        )
+        _cooldown(progress)
 
-    t_notes = Task(
-        description=(
-            f"Write exam-oriented notes for CSS {subject}. Pick {focus_text} if it is a specific topic; "
-            "otherwise pick the 3 highest-priority topics from the syllabus and past paper analysis.\n"
-            "For each topic use 'Web Search' at least once to verify facts. Include: key points, "
-            "important dates/facts, arguments for and against, and 2 source links. "
-            "Keep each topic under 250 words."
-        ),
-        expected_output="Markdown notes, one section per topic, with source links.",
-        agent=notes_agent,
-        context=[t_syllabus, t_papers],
-    )
+    if "notes" not in partial:
+        progress("Step 3/4: Notes Writer is working...")
+        partial["notes"] = run_stage(
+            build_notes_agent(llm),
+            (
+                f"Write exam notes for CSS {subject}. Choose {focus_text} if it is a specific topic; "
+                "otherwise choose the 3 highest-priority topics below.\n"
+                "Call 'Web Search' at most 2 times (one query can cover 2-3 topics) to verify facts. "
+                "For each topic give: key points, important dates/facts, arguments for and against, "
+                "and 1-2 source links. Max 120 words per topic.\n"
+                f"Topics:\n{truncate(partial['topics'], 1200)}\n"
+                f"Past paper trends:\n{truncate(partial['past_papers'], 1000)}"
+            ),
+            "Markdown notes, one short section per topic, with source links.",
+            progress,
+            "Notes Writer",
+        )
+        _cooldown(progress)
 
-    t_questions = Task(
-        description=(
-            f"Set {num_questions} CSS-style practice questions for {subject}, {marks} marks each, "
-            "based on the topic list, past paper trends and notes. Mix question types "
-            "(discuss, critically examine, evaluate). You may call 'Search Uploaded Files' to match "
-            "the past paper style.\n"
-            "FORMAT RULE: start every question on its own line as 'Q1. ...', 'Q2. ...' and so on, "
-            "then add a 'Hint:' line with 2-3 key points to cover."
-        ),
-        expected_output="A numbered question paper (Q1..Qn) with a short hint under each question.",
-        agent=question_agent,
-        context=[t_syllabus, t_papers, t_notes],
-    )
+    if "questions" not in partial:
+        progress("Step 4/4: Question Setter is working...")
+        partial["questions"] = run_stage(
+            build_question_agent(llm),
+            (
+                f"Set {num_questions} CSS-style practice questions for {subject}, {marks} marks each, "
+                "using the material below. Mix command words (discuss, critically examine, evaluate). "
+                "You may call 'Search Uploaded Files' once to match past paper style.\n"
+                "FORMAT RULE: start every question on its own line as 'Q1. ...', 'Q2. ...' and so on, "
+                "then a 'Hint:' line with 2-3 key points.\n"
+                f"Topics:\n{truncate(partial['topics'], 900)}\n"
+                f"Past paper trends:\n{truncate(partial['past_papers'], 800)}\n"
+                f"Notes:\n{truncate(partial['notes'], 1200)}"
+            ),
+            "A numbered question paper (Q1..Qn) with a short hint under each question.",
+            progress,
+            "Question Setter",
+        )
 
-    crew = Crew(
-        agents=[syllabus_agent, paper_agent, notes_agent, question_agent],
-        tasks=[t_syllabus, t_papers, t_notes, t_questions],
-        process=Process.sequential,
-        verbose=True,
-    )
-    crew.kickoff()
-
-    return {
-        "topics": _raw(t_syllabus),
-        "past_papers": _raw(t_papers),
-        "notes": _raw(t_notes),
-        "questions": _raw(t_questions),
-    }
+    return dict(partial)

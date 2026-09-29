@@ -1,38 +1,34 @@
 """Crew 2: assesses one written answer."""
-from crewai import Crew, Process, Task
-
 from agent_assessor import build_assessor_agent
+from crew_common import run_stage
+from tool_assessment import set_current_answer
+
+MAX_ANSWER_CHARS = 7000
 
 
-def run_assessment(llm, subject: str, question: str, answer: str, marks: int) -> str:
-    assessor = build_assessor_agent(llm)
+def run_assessment(llm, subject, question, answer, marks, progress=None) -> str:
+    note = ""
+    if len(answer) > MAX_ANSWER_CHARS:
+        answer = answer[:MAX_ANSWER_CHARS]
+        note = "\n(The answer was cut to fit the free Groq limit; mention this in your report.)"
+    set_current_answer(answer)
 
-    task = Task(
-        description=(
+    return run_stage(
+        build_assessor_agent(llm),
+        (
             f"Subject: CSS {subject}. Total marks: {marks}.\n"
             f"QUESTION:\n{question}\n\n"
-            f"STUDENT ANSWER:\n{answer}\n\n"
-            "Steps:\n"
-            "1) Call 'Answer Structure Analyzer' with the student answer text.\n"
-            "2) Call 'Web Search' at least once to verify one or two key facts in the answer.\n"
-            "3) Mark like a strict but fair FPSC examiner using this rubric: understanding of the "
-            "question 20%, content accuracy and depth 30%, analysis and arguments 20%, "
-            "structure and coherence 15%, language 15%."
+            f"STUDENT ANSWER:\n{answer}{note}\n\n"
+            "Steps (use at most 2 tool calls):\n"
+            "1) Call 'Answer Structure Analyzer' with check='all' (it already has the answer).\n"
+            "2) Call 'Web Search' once to verify one or two key facts.\n"
+            "3) Mark like a strict but fair FPSC examiner: understanding of the question 20%, content "
+            "accuracy and depth 30%, analysis and arguments 20%, structure 15%, language 15%."
         ),
-        expected_output=(
-            "Markdown with these headings: Marks (x/total), Rubric breakdown, Strengths, "
-            "Weaknesses, Missing points, Factual corrections, 5-step improvement plan, "
-            "and a better opening paragraph."
+        (
+            "Markdown, under 450 words, with headings: Marks (x/total), Rubric breakdown, Strengths, "
+            "Weaknesses, Missing points, Factual corrections, 5-step improvement plan, better opening paragraph."
         ),
-        agent=assessor,
+        progress,
+        "Assessor",
     )
-
-    crew = Crew(
-        agents=[assessor],
-        tasks=[task],
-        process=Process.sequential,
-        verbose=True,
-    )
-    crew.kickoff()
-    out = getattr(task, "output", None)
-    return getattr(out, "raw", None) or str(out or "")

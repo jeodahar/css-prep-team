@@ -10,8 +10,9 @@ MODEL_NAME = "groq/openai/gpt-oss-120b"  # "groq/" prefix tells CrewAI/LiteLLM t
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Groq free tier has small per-minute token limits, so every tool result is capped.
-MAX_TOOL_CHARS = 4000
+# Groq free tier allows only ~8,000 tokens per minute, so everything is kept small.
+MAX_TOOL_CHARS = 1500   # web results returned to an agent
+DOC_CHUNK_CHARS = 2500  # one part of an uploaded file
 
 CSS_SUBJECTS = [
     "Essay",
@@ -130,4 +131,13 @@ def get_llm() -> LLM:
         )
     os.environ["GROQ_API_KEY"] = key
     _apply_groq_patch()  # make sure the patch is active before any request
-    return LLM(model=MODEL_NAME, api_key=key, temperature=0.3)
+    return LLM(model=MODEL_NAME, api_key=key, temperature=0.3, max_tokens=2500)
+
+
+def get_rpm() -> int:
+    """Max requests per minute per agent. Low on purpose for the Groq free tier.
+    If you upgrade Groq, add GROQ_MAX_RPM = "20" in Streamlit Secrets for more speed."""
+    try:
+        return int(st.secrets["GROQ_MAX_RPM"])
+    except Exception:
+        return 2

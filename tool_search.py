@@ -10,13 +10,13 @@ def web_search(query: str) -> str:
     try:
         from ddgs import DDGS  # imported here so a missing package cannot crash startup
 
-        results = DDGS().text(query, max_results=5)
+        results = DDGS().text(query, max_results=4)
     except Exception as e:
         return f"Search failed: {e}"
     if not results:
         return "No results found."
     lines = [
-        f"- {r.get('title', '')} | {r.get('href', '')} | {r.get('body', '')}"
+        f"- {r.get('title', '')[:80]} | {r.get('href', '')} | {r.get('body', '')[:220]}"
         for r in results
     ]
     return truncate("\n".join(lines))

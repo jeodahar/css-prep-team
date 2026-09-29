@@ -3,11 +3,21 @@ import re
 
 from crewai.tools import tool
 
+_STATE = {"answer": ""}
+
+
+def set_current_answer(text: str) -> None:
+    """Called by the crew before the assessor starts, so the answer need not be repeated in tool calls."""
+    _STATE["answer"] = text or ""
+
 
 @tool("Answer Structure Analyzer")
-def analyze_answer_structure(answer: str) -> str:
-    """Measure an answer: word count, paragraphs, sentence length, facts/dates, headings, conclusion cue."""
-    text = (answer or "").strip()
+def analyze_answer_structure(check: str = "all") -> str:
+    """Measure the student's submitted answer (word count, paragraphs, sentence length, facts/dates,
+    headings, conclusion cue). You do NOT need to pass the answer text; just call it with check='all'."""
+    text = _STATE["answer"].strip()
+    if not text:
+        return "No answer available."
     words = re.findall(r"\b\w+\b", text)
     paragraphs = [p for p in re.split(r"\n\s*\n", text) if p.strip()]
     sentences = [s for s in re.split(r"[.!?]+\s", text) if s.strip()]

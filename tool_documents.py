@@ -3,7 +3,7 @@ from pathlib import Path
 
 from crewai.tools import tool
 
-from config import MAX_TOOL_CHARS, UPLOAD_DIR, truncate
+from config import DOC_CHUNK_CHARS, UPLOAD_DIR, truncate
 
 _CACHE = {}
 
@@ -46,9 +46,9 @@ def read_uploaded_file(filename: str, part: int = 1) -> str:
         return f"Could not read {filename}: {e}"
     if not text:
         return "No readable text found (the PDF may be a scanned image)."
-    total = max(1, -(-len(text) // MAX_TOOL_CHARS))
+    total = max(1, -(-len(text) // DOC_CHUNK_CHARS))
     part = max(1, min(int(part), total))
-    chunk = text[(part - 1) * MAX_TOOL_CHARS : part * MAX_TOOL_CHARS]
+    chunk = text[(part - 1) * DOC_CHUNK_CHARS : part * DOC_CHUNK_CHARS]
     return f"[{path.name} - part {part} of {total}]\n{chunk}"
 
 

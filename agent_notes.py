@@ -1,20 +1,18 @@
 from crewai import Agent
 
-from tool_search import fetch_webpage, web_search
+from config import get_rpm
+from tool_search import web_search
 
 
 def build_notes_agent(llm) -> Agent:
     return Agent(
         role="CSS Topic Notes Writer",
-        goal="Write short, accurate, exam-oriented notes for the most important topics.",
-        backstory=(
-            "You are a senior CSS mentor. You write concise notes with key facts, dates, "
-            "arguments for and against, and reliable references. You always check facts "
-            "with the web tools before writing."
-        ),
-        tools=[web_search, fetch_webpage],
+        goal="Write short, accurate, exam-oriented notes and check facts with web search.",
+        backstory="Senior CSS mentor who writes concise notes with key facts and source links.",
+        tools=[web_search],
         llm=llm,
         verbose=True,
         allow_delegation=False,
-        max_iter=8,
+        max_iter=5,
+        max_rpm=get_rpm(),
     )

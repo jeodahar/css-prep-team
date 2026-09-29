@@ -97,8 +97,18 @@ with tab_prepare:
     if st.button("Build my preparation package", type="primary"):
         try:
             llm = get_llm()
-            with st.spinner("4 agents are working... this can take a few minutes."):
-                ss["package"] = run_preparation(llm, subject, focus, n_questions, int(marks))
+            partial = ss.setdefault("partial", {})
+            sig = (subject, focus, n_questions, int(marks))
+            if ss.get("partial_sig") != sig:
+                partial.clear()
+                ss["partial_sig"] = sig
+            with st.status("4 agents are working (free Groq limits make this take ~5-8 minutes)...", expanded=True) as status:
+                pkg_new = run_preparation(
+                    llm, subject, focus, n_questions, int(marks), partial, lambda m: st.write(m)
+                )
+                status.update(label="Package ready", state="complete", expanded=False)
+            ss["package"] = pkg_new
+            partial.clear()
             ss["package_subject"] = subject
             if user_id and storage.is_enabled():
                 err = storage.save_package(user_id, subject, ss["package"])
@@ -108,7 +118,10 @@ with tab_prepare:
                     st.success("Package saved to your profile.")
         except Exception as e:
             st.error(f"Something went wrong: {e}")
-            st.info("If you see a rate-limit (429) error, wait one minute and try again.")
+            if ss.get("partial"):
+                st.info("Finished steps are kept. Click the button again to continue from where it stopped.")
+            else:
+                st.info("If you see a rate-limit (429) error, wait one minute and try again.")
 
     pkg = ss.get("package")
     if pkg:
