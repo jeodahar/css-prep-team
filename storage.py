@@ -8,11 +8,16 @@ TABLE = "css_data"
 
 
 @st.cache_resource
+def _create(url: str, key: str):
+    """Only successful connections are cached, so fixing Secrets works without a reboot."""
+    from supabase import create_client
+
+    return create_client(url, key)
+
+
 def _connect():
     try:
-        from supabase import create_client
-
-        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]), None
+        return _create(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]), None
     except Exception as e:
         return None, f"{type(e).__name__}: {e}"
 
