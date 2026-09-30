@@ -48,20 +48,33 @@ def setup_error():
     return _connect()[1]
 
 
+def _explain(prefix: str, e: Exception) -> str:
+    msg = str(e)
+    if "row-level security" in msg or "42501" in msg:
+        return (
+            f"{prefix}: Supabase blocked the write because SUPABASE_KEY is a public key. "
+            "Put the secret key (starts with sb_secret_) in Streamlit Secrets as SUPABASE_KEY."
+        )
+    return f"{prefix}: {msg}"
+
+
 def is_enabled() -> bool:
     return _client() is not None
 
 
 def check_connection():
-    """Returns (ok, message). Used by the 'Test cloud saving' button."""
+    """Returns (ok, message). Tries a real write, so a wrong key is caught."""
     client = _client()
     if client is None:
         return False, f"Supabase is not connected. {setup_error() or ''}".strip()
     try:
-        client.table(TABLE).select("id").limit(1).execute()
-        return True, f"Connected. Table '{TABLE}' is working."
+        client.table(TABLE).insert(
+            {"user_id": "_test", "kind": "_test", "subject": "_test", "content": {"ok": True}}
+        ).execute()
+        client.table(TABLE).delete().eq("user_id", "_test").eq("kind", "_test").execute()
+        return True, f"Connected. Reading and saving to table '{TABLE}' both work."
     except Exception as e:
-        return False, f"Connected to Supabase, but the table is not usable yet: {e}"
+        return False, _explain("Connected to Supabase, but saving does not work yet", e)
 
 
 def save_package(user_id: str, subject: str, content: dict):
@@ -78,7 +91,7 @@ def save_package(user_id: str, subject: str, content: dict):
         ).execute()
         return None
     except Exception as e:
-        return f"Could not save the package: {e}"
+        return _explain("Could not save the package", e)
 
 
 def save_report(user_id: str, subject: str, item: dict):
@@ -92,7 +105,7 @@ def save_report(user_id: str, subject: str, item: dict):
         ).execute()
         return None
     except Exception as e:
-        return f"Could not save the report: {e}"
+        return _explain("Could not save the report", e)
 
 
 def load_items(user_id: str, kind: str, subject: str = None):
@@ -126,4 +139,4 @@ def save_replace(user_id: str, kind: str, subject: str, content: dict):
         ).execute()
         return None
     except Exception as e:
-        return f"Could not save: {e}"
+        return _explain("Could not save", e)
