@@ -6,11 +6,13 @@ from tool_assessment import set_current_answer
 MAX_ANSWER_CHARS = 7000
 
 
-def run_assessment(llm, subject, question, answer, marks, progress=None) -> str:
+def run_assessment(llm, subject, question, answer, marks, progress=None, from_photo=False) -> str:
     note = ""
     if len(answer) > MAX_ANSWER_CHARS:
         answer = answer[:MAX_ANSWER_CHARS]
         note = "\n(The answer was cut to fit the free Groq limit; mention this in your report.)"
+    if from_photo:
+        note += "\n(This answer was read from a handwritten photo by OCR. Ignore small spelling slips caused by OCR.)"
     set_current_answer(answer)
 
     return run_stage(
@@ -23,11 +25,16 @@ def run_assessment(llm, subject, question, answer, marks, progress=None) -> str:
             "1) Call 'Answer Structure Analyzer' with check='all' (it already has the answer).\n"
             "2) Call 'Web Search' once to verify one or two key facts.\n"
             "3) Mark like a strict but fair FPSC examiner: understanding of the question 20%, content "
-            "accuracy and depth 30%, analysis and arguments 20%, structure 15%, language 15%."
+            "accuracy and depth 30%, analysis and arguments 20%, structure 15%, language 15%.\n"
+            "4) Finish with ONE last line in exactly this format (numbers only): "
+            f"DATA: marks=<0-{marks}>; understanding=<0-20>; content=<0-30>; analysis=<0-20>; "
+            "structure=<0-15>; language=<0-15>; weak_topics=<up to 3 syllabus topics the student "
+            "missed or got wrong, separated by |>"
         ),
         (
             "Markdown, under 450 words, with headings: Marks (x/total), Rubric breakdown, Strengths, "
-            "Weaknesses, Missing points, Factual corrections, 5-step improvement plan, better opening paragraph."
+            "Weaknesses, Missing points, Factual corrections, 5-step improvement plan, better opening "
+            "paragraph. The very last line must be the DATA line."
         ),
         progress,
         "Assessor",

@@ -147,3 +147,12 @@ def get_rpm() -> int:
         return int(st.secrets["GROQ_MAX_RPM"])
     except Exception:
         return 2
+
+
+def get_vision_model() -> str:
+    """Groq model used to read handwriting from photos. Change it with VISION_MODEL in Secrets
+    if Groq retires this one."""
+    try:
+        return str(st.secrets["VISION_MODEL"])
+    except Exception:
+        return "qwen/qwen3.8-27b"

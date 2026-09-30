@@ -215,3 +215,8 @@ def reports_pdf(history: list) -> bytes:
         md += h.get("report", "")
         sections.append((f"{h.get('time', '')} - {h.get('subject', '')}", md))
     return _build("CSS Answer Assessment Reports", _stamp(), sections, page_break_between=True)
+
+
+def document_pdf(title: str, sections: list) -> bytes:
+    """Generic PDF: sections is a list of (heading, markdown_text)."""
+    return _build(title, _stamp(), sections)

@@ -109,3 +109,21 @@ def load_items(user_id: str, kind: str, subject: str = None):
         return rows, None
     except Exception as e:
         return [], f"Could not load saved data: {e}"
+
+
+def save_replace(user_id: str, kind: str, subject: str, content: dict):
+    """Save one item, replacing any earlier item with the same user, kind and subject key.
+    Returns an error text or None."""
+    client = _client()
+    if client is None:
+        return "Cloud saving is not set up."
+    try:
+        client.table(TABLE).delete().eq("user_id", user_id).eq("kind", kind).eq(
+            "subject", subject
+        ).execute()
+        client.table(TABLE).insert(
+            {"user_id": user_id, "kind": kind, "subject": subject, "content": content}
+        ).execute()
+        return None
+    except Exception as e:
+        return f"Could not save: {e}"
